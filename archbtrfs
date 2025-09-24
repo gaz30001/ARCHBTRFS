@@ -145,7 +145,7 @@ reflector --verbose --country Russia,Germany --sort rate -n 10 --save /etc/pacma
 
 echo -e "\n${GREEN}Installing base system (pacstrap)... This may take a while.${RESET}"
 pacstrap -K /mnt base base-devel linux-zen linux-firmware btrfs-progs \
-networkmanager zsh git grub sudo terminus-font xterm pcmanfm ranger \
+wireless_tools wpa_supplicant netctl dhcpcd zsh git curl openssh grub sudo terminus-font xterm pcmanfm ranger \
 feh xorg xorg-xinit mesa xf86-video-ati bspwm sxhkd polybar neovim go
 
 genfstab -U /mnt >> /mnt/etc/fstab
