@@ -196,7 +196,7 @@ fi
 
 #-------------------- Службы --------------------
 
-arch-chroot /mnt systemctl enable NetworkManager
+arch-chroot /mnt
 
 #-------------------- ZSH и yay --------------------
 
