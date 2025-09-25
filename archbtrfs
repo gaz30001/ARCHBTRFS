@@ -147,7 +147,7 @@ echo -e "\n${GREEN}Installing base system (pacstrap)... This may take a while.${
 pacstrap -K /mnt base base-devel linux-zen linux-firmware btrfs-progs \
 wireless_tools wpa_supplicant netctl dhcpcd zsh git curl openssh grub sudo terminus-font xterm pcmanfm ranger \
 feh xorg xorg-xinit mesa xf86-video-ati bspwm sxhkd polybar amd-ucode neovim go
-ttf-jetbrains-mono ttf-jetbrains-mono-nerd ttf-fira-code                                       ttf-iosevka-nerd xclip gpick gparted nodejs npm gcc pavucontrol pulseaudio pulseaudio-alsa python-pyalsa scrot tree    unrar zip unzip uthash xarchiver zathura zathura-djvu zathura-pdf-mupdf sudo cmake alsa-plugins alsa-tools alsa-utils    ffmpeg p7zip alacritty wget libmtp gvfs-mtp mtpfs android-udev
+ttf-jetbrains-mono \ ttf-jetbrains-mono-nerd ttf-fira-code                                       ttf-iosevka-nerd xclip gpick gparted nodejs npm gcc pavucontrol pulseaudio pulseaudio-alsa python-pyalsa scrot tree    unrar zip unzip uthash xarchiver zathura \ zathura-djvu zathura-pdf-mupdf sudo cmake alsa-plugins alsa-tools alsa-utils    ffmpeg p7zip alacritty wget libmtp gvfs-mtp mtpfs android-udev
 
 genfstab -U /mnt >> /mnt/etc/fstab
 
