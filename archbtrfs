@@ -144,7 +144,7 @@ reflector --verbose --country Russia,Germany --sort rate -n 10 --save /etc/pacma
 #-------------------- Установка системы --------------------
 
 echo -e "\n${GREEN}Installing base system (pacstrap)... This may take a while.${RESET}"
-pacstrap -K /mnt base base-devel linux-zen linux-firmware btrfs-progs wireless_tools wpa_supplicant netctl dhcpcd zsh git curl openssh grub sudo terminus-font xterm pcmanfm ranger feh xorg xorg-xinit mesa xf86-video-ati bspwm sxhkd polybar amd-ucode neovim go ttf-jetbrains-mono-nerd ttf-fira-code ttf-iosevka-nerd xclip gpick gparted nodejs npm gcc pavucontrol pulseaudio pulseaudio-alsa python-pyalsa scrot tree unrar zip unzip uthash xarchiver zathura sudo cmake alsa-plugins alsa-tools alsa-utils ffmpeg p7zip alacritty wget libmtp gvfs-mtp mtpfs android-udev qutebrowser dunst libnotify shellcheck shfmt pamixer bc yad xdotool
+pacstrap -K /mnt base base-devel linux-zen linux-firmware btrfs-progs wireless_tools wpa_supplicant netctl dhcpcd zsh git curl openssh grub sudo terminus-font xterm pcmanfm ranger feh xorg xorg-xinit mesa xf86-video-ati bspwm sxhkd polybar amd-ucode neovim go ttf-jetbrains-mono-nerd ttf-fira-code ttf-iosevka-nerd xclip gpick gparted nodejs npm gcc pavucontrol pulseaudio pulseaudio-alsa python-pyalsa scrot tree unrar zip unzip uthash xarchiver zathura sudo cmake alsa-plugins alsa-tools alsa-utils ffmpeg p7zip alacritty wget libmtp gvfs-mtp mtpfs android-udev qutebrowser dunst libnotify shellcheck shfmt pamixer bc yad xdotool dosfstools
 
 genfstab -U /mnt >> /mnt/etc/fstab
 
