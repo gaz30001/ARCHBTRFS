@@ -92,11 +92,15 @@ mount -t btrfs -o subvol=@var_log,$BTRFS_OPTS $PART_ROOT /mnt/var/log
 mount $PART_EFI /mnt/boot
 
 #-------------------- Установка системы --------------------
-# [span_5](start_span)Добавлено: intel-ucode, nvidia, nvidia-utils для твоего железа[span_5](end_span)
-echo -e "\n${GREEN}Installing system and drivers...${RESET}"
+echo -e "\n${GREEN}Updating package databases...${RESET}"
+pacman -Sy --noconfirm # Это обновит списки, чтобы пакет nvidia стал доступен
+
+echo -e "\n${GREEN}Installing system and drivers for Dell 5580...${RESET}"
+# Включаем intel-ucode и nvidia для твоего i7-7820HQ и 940MX
 pacstrap -K /mnt base base-devel linux-zen linux-firmware intel-ucode btrfs-progs \
 networkmanager zsh git sudo xorg-server xorg-xinit nvidia nvidia-utils \
-bspwm polybar sxhkd neovim alacritty feh rofi
+bspwm polybar sxhkd neovim alacritty feh rofi terminus-font pcmanfm ranger
+
 
 genfstab -U /mnt >> /mnt/etc/fstab
 
