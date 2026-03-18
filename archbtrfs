@@ -35,7 +35,7 @@ mapfile -t DISKS < <(lsblk -dpno NAME,SIZE | grep -v "boot")
 for i in "${!DISKS[@]}"; do
     echo "$((i+1))) ${DISKS[$i]}"
 done
-read -p "Choose disk number: " disk_index
+read -p "Choose disk number to install on: " disk_index
 DISK=$(echo ${DISKS[$((disk_index-1))]} | awk '{print $1}')
 
 #-------------------- Хост и пользователь --------------------
@@ -59,8 +59,8 @@ while true; do
     echo -e "${RED}Mismatch.${RESET}"
 done
 
-#-------------------- Разметка и Монтирование (UEFI + Btrfs) --------------------
-# Исправлено: принудительное размонтирование перед форматированием
+#-------------------- Разметка (GPT/UEFI + Btrfs) --------------------
+# [cite_start]Исправлено: принудительное размонтирование для предотвращения ошибок[span_0](end_span)
 umount -R /mnt 2>/dev/null || true
 swapoff -a 2>/dev/null || true
 
@@ -70,7 +70,6 @@ sgdisk -n 2:0:0 -t 2:8300 $DISK
 PART_EFI="${DISK}1"
 PART_ROOT="${DISK}2"
 
-# Форматирование
 mkfs.fat -F32 $PART_EFI
 mkfs.btrfs -f -L ArchLinux $PART_ROOT
 
@@ -82,7 +81,7 @@ btrfs subvolume create /mnt/@snapshots
 btrfs subvolume create /mnt/@var_log
 umount /mnt
 
-# Финальное монтирование с оптимизацией под SSD Dell 5580
+# [span_1](start_span)Монтирование с оптимизацией под SSD[span_1](end_span)
 BTRFS_OPTS="noatime,compress=zstd:2,ssd,discard=async,space_cache=v2"
 mount -t btrfs -o subvol=@,$BTRFS_OPTS $PART_ROOT /mnt
 mkdir -p /mnt/{boot,home,.snapshots,var/log}
@@ -91,16 +90,18 @@ mount -t btrfs -o subvol=@snapshots,$BTRFS_OPTS $PART_ROOT /mnt/.snapshots
 mount -t btrfs -o subvol=@var_log,$BTRFS_OPTS $PART_ROOT /mnt/var/log
 mount $PART_EFI /mnt/boot
 
+#-------------------- Обновление зеркал --------------------
+echo -e "\n${GREEN}Updating mirror list (Reflector)...${RESET}"
+[span_2](start_span)pacman -Sy --noconfirm reflector[span_2](end_span)
+reflector --country Russia,Germany --sort rate -n 10 --save /etc/pacman.d/mirrorlist
+pacman -Sy --noconfirm
+
 #-------------------- Установка системы --------------------
-echo -e "\n${GREEN}Updating package databases...${RESET}"
-pacman -Sy --noconfirm # Это обновит списки, чтобы пакет nvidia стал доступен
-
-echo -e "\n${GREEN}Installing system and drivers for Dell 5580...${RESET}"
-# Включаем intel-ucode и nvidia для твоего i7-7820HQ и 940MX
+# [span_3](start_span)Добавлено: intel-ucode для i7-7820HQ и nvidia для 940MX[span_3](end_span)
+echo -e "\n${GREEN}Installing system and drivers...${RESET}"
 pacstrap -K /mnt base base-devel linux-zen linux-firmware intel-ucode btrfs-progs \
-networkmanager zsh git sudo xorg-server xorg-xinit nvidia nvidia-utils \
-bspwm polybar sxhkd neovim alacritty feh rofi terminus-font pcmanfm ranger
-
+networkmanager zsh git sudo terminus-font xorg-server xorg-xinit nvidia nvidia-utils \
+bspwm polybar sxhkd neovim alacritty feh rofi pcmanfm ranger
 
 genfstab -U /mnt >> /mnt/etc/fstab
 
@@ -119,24 +120,58 @@ useradd -m -G wheel,video,audio -s /bin/zsh $USERNAME
 echo "$USERNAME:$USER_PASSWORD" | chpasswd
 sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
 
-# [span_6](start_span)Установка загрузчика (Systemd-boot)[span_6](end_span)
+# [span_4](start_span)Установка загрузчика (Systemd-boot)[span_4](end_span)
 bootctl --path=/boot install
 UUID=\$(blkid -s UUID -o value $PART_ROOT)
 echo "default arch.conf" > /boot/loader/loader.conf
 cat <<CONF > /boot/loader/entries/arch.conf
-title Arch Linux (Zen)
-linux /vmlinuz-linux-zen
-initrd /intel-ucode.img
-initrd /initramfs-linux-zen.img
+title   Arch Linux (Zen)
+linux   /vmlinuz-linux-zen
+initrd  /intel-ucode.img
+initrd  /initramfs-linux-zen.img
 options root=UUID=\$UUID rootflags=subvol=@ rw nvidia-drm.modeset=1
 CONF
+
+# Отключение писка в системе
+echo "blacklist pcspkr" > /etc/modprobe.d/nobeep.conf
 
 systemctl enable NetworkManager
 EOF
 
 #-------------------- ZSH и софт (из твоего скрипта) --------------------
-# (Здесь остаются твои команды клонирования oh-my-zsh и установки yay) [span_7](start_span)
-arch-chroot /mnt su - $USERNAME -c "git clone https://github.com/ohmyzsh/ohmyzsh.git ~/.oh-my-zsh"
-# ... (и так далее по твоему тексту)
+[span_5](start_span)arch-chroot /mnt su - $USERNAME -c "git clone https://github.com/ohmyzsh/ohmyzsh.git ~/.oh-my-zsh"[span_5](end_span)
+arch-chroot /mnt su - $USERNAME -c "git clone https://github.com/zsh-users/zsh-autosuggestions ~/.oh-my-zsh/custom/plugins/zsh-autosuggestions"
+arch-chroot /mnt su - $USERNAME -c "git clone https://github.com/zsh-users/zsh-syntax-highlighting ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting"
+arch-chroot /mnt su - $USERNAME -c "cp ~/.oh-my-zsh/templates/zshrc.zsh-template ~/.zshrc"
 
-echo -e "\n${GREEN}Installation complete! Reboot now.${RESET}"
+# [span_6](start_span)Настройка sudo без пароля для yay[span_6](end_span)
+echo "$USERNAME ALL=(ALL) NOPASSWD: /usr/bin/pacman" > /mnt/etc/sudoers.d/$USERNAME
+chmod 440 /mnt/etc/sudoers.d/$USERNAME
+
+# [span_7](start_span)Установка yay[span_7](end_span)
+arch-chroot /mnt su - $USERNAME -c "git clone https://aur.archlinux.org/yay.git ~/yay && cd ~/yay && makepkg -si --noconfirm"
+
+#-------------------- Xresources Gruvbox --------------------
+cat <<XCONF > /mnt/home/$USERNAME/.Xresources
+*.foreground: #ebdbb2
+*.background: #282828
+*.color0: #282828
+*.color1: #cc241d
+*.color2: #98971a
+*.color3: #d79921
+*.color4: #458588
+*.color5: #b16286
+*.color6: #689d6a
+*.color7: #a89984
+*.color8: #928374
+*.color9: #fb4934
+*.color10: #b8bb26
+*.color11: #fabd2f
+*.color12: #83a598
+*.color13: #d3869b
+*.color14: #8ec07c
+*.color15: #ebdbb2
+XCONF
+arch-chroot /mnt chown $USERNAME:$USERNAME /home/$USERNAME/.Xresources
+
+[span_8](start_span)echo -e "\n${GREEN}Installation complete! Reboot now.${RESET}"[span_8](end_span)
