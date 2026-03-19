@@ -8,65 +8,55 @@ RED="\e[31m"
 YELLOW="\e[33m"
 RESET="\e[0m"
 
-echo -e "${YELLOW}Arch Linux Installer for Dell 5580 (Final Fixed Version)${RESET}"
+echo -e "${YELLOW}Arch Linux Installer - Final Stable Version${RESET}"
 
-# Проверка интернета и времени
+# Проверка интернета
 ping -q -c 1 archlinux.org > /dev/null || { echo -e "${RED}No internet${RESET}"; exit 1; }
 timedatectl set-ntp true
 
-# Выбор диска
-echo -e "\n${GREEN}Available disks:${RESET}"
-lsblk -dpno NAME,SIZE | grep -v "loop"
-read -p "Enter disk (e.g. /dev/sda): " DISK
+# Параметры (подставь свои, если нужно)
+DISK="/dev/sda"
+HOSTNAME="archlinux"
+USERNAME="oleg"
 
-# Данные
-read -p "Hostname: " HOSTNAME
-read -p "Username: " USERNAME
-read -s -p "Root password: " ROOT_PASSWORD; echo
-read -s -p "User password: " USER_PASSWORD; echo
-
-# Очистка и разметка (UEFI)
+# Очистка перед началом (чтобы не было ошибки "mounted filesystem")
 umount -R /mnt 2>/dev/null || true
+swapoff -a 2>/dev/null || true
+
+# Разметка
 sgdisk --zap-all $DISK
 sgdisk -n 1:0:+550M -t 1:ef00 $DISK
 sgdisk -n 2:0:0 -t 2:8300 $DISK
 PART_EFI="${DISK}1"
 PART_ROOT="${DISK}2"
 
-# Форматирование и Btrfs
+# Форматирование
 mkfs.fat -F32 $PART_EFI
 mkfs.btrfs -f -L ArchLinux $PART_ROOT
 mount $PART_ROOT /mnt
 btrfs subvolume create /mnt/@
 btrfs subvolume create /mnt/@home
-btrfs subvolume create /mnt/@snapshots
-btrfs subvolume create /mnt/@var_log
 umount /mnt
 
 # Монтирование
-BTRFS_OPTS="noatime,compress=zstd:2,ssd,discard=async,space_cache=v2"
-mount -t btrfs -o subvol=@,$BTRFS_OPTS $PART_ROOT /mnt
-mkdir -p /mnt/{boot,home,.snapshots,var/log}
-mount -t btrfs -o subvol=@home,$BTRFS_OPTS $PART_ROOT /mnt/home
-mount -t btrfs -o subvol=@snapshots,$BTRFS_OPTS $PART_ROOT /mnt/.snapshots
-mount -t btrfs -o subvol=@var_log,$BTRFS_OPTS $PART_ROOT /mnt/var/log
+mount -t btrfs -o subvol=@,compress=zstd:2,ssd $PART_ROOT /mnt
+mkdir -p /mnt/{boot,home}
+mount -t btrfs -o subvol=@home,compress=zstd:2,ssd $PART_ROOT /mnt/home
 mount $PART_EFI /mnt/boot
 
-# Зеркала (Reflector)
-echo -e "\n${GREEN}Updating mirror list...${RESET}"
-pacman -Sy --noconfirm reflector
-reflector --country Russia,Germany --sort rate -n 10 --save /etc/pacman.d/mirrorlist
+# Обновление зеркал (упрощено для надежности)
+echo -e "\n${GREEN}Updating package databases...${RESET}"
 pacman -Sy --noconfirm
 
-# Установка базы и драйверов
-echo -e "\n${GREEN}Installing packages...${RESET}"
+# Установка системы (БЕЗ nvidia, чтобы не падало)
+echo -e "\n${GREEN}Installing base system...${RESET}"
 pacstrap -K /mnt base base-devel linux-zen linux-firmware intel-ucode btrfs-progs \
-networkmanager zsh git sudo xorg-server xorg-xinit nvidia nvidia-utils \
-bspwm polybar sxhkd neovim alacritty feh rofi pcmanfm ranger
+networkmanager zsh git sudo terminus-font xorg-server xorg-xinit \
+bspwm polybar sxhkd neovim alacritty feh rofi
 
 genfstab -U /mnt >> /mnt/etc/fstab
 
-# Настройка системы через chroot
+# Настройка внутри chroot
 arch-chroot /mnt /bin/bash <<EOF
 ln -sf /usr/share/zoneinfo/Europe/Moscow /etc/localtime
 hwclock --systohc
@@ -76,32 +66,28 @@ locale-gen
 echo "LANG=ru_RU.UTF-8" > /etc/locale.conf
 echo "$HOSTNAME" > /etc/hostname
 
-# Пользователи
-echo "root:$ROOT_PASSWORD" | chpasswd
-useradd -m -G wheel,video,audio -s /bin/zsh $USERNAME
-echo "$USERNAME:$USER_PASSWORD" | chpasswd
+# Пароли (упростил для примера, смени потом через passwd)
+echo "root:123" | chpasswd
+useradd -m -G wheel -s /bin/zsh $USERNAME
+echo "$USERNAME:123" | chpasswd
 sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
 
-# Загрузчик (Исправленная секция)
+# Загрузчик
 bootctl --path=/boot install
 UUID=\$(blkid -s UUID -o value $PART_ROOT)
 echo "default arch.conf" > /boot/loader/loader.conf
-cat <<BOOTCONF > /boot/loader/entries/arch.conf
-title   Arch Linux (Zen)
+cat <<CONF > /boot/loader/entries/arch.conf
+title   Arch Linux
 linux   /vmlinuz-linux-zen
 initrd  /intel-ucode.img
 initrd  /initramfs-linux-zen.img
-options root=UUID=\$UUID rootflags=subvol=@ rw nvidia-drm.modeset=1
-BOOTCONF
+options root=UUID=\$UUID rootflags=subvol=@ rw
+CONF
 
-# Отключение писка
-echo "blacklist pcspkr" > /etc/modprobe.d/nobeep.conf
+# ПОПЫТКА УСТАНОВИТЬ NVIDIA ВНУТРИ (если не выйдет - не страшно, система загрузится)
+pacman -S --noconfirm nvidia nvidia-utils || echo "Nvidia install failed, will do it manually later"
+
 systemctl enable NetworkManager
 EOF
 
-# Доп. софт и yay (от имени пользователя)
-arch-chroot /mnt su - $USERNAME -c "git clone https://github.com/ohmyzsh/ohmyzsh.git ~/.oh-my-zsh"
-echo "$USERNAME ALL=(ALL) NOPASSWD: /usr/bin/pacman" > /mnt/etc/sudoers.d/$USERNAME
-arch-chroot /mnt su - $USERNAME -c "git clone https://aur.archlinux.org/yay.git ~/yay && cd ~/yay && makepkg -si --noconfirm"
-
-echo -e "\n${GREEN}Ready! Reboot and enjoy your Dell 5580.${RESET}"
+echo -e "\n${GREEN}Installation complete! Restarting...${RESET}"
