@@ -1,79 +1,41 @@
 #!/bin/bash
-#-------------------- Цвета --------------------
-GREEN="\e[32m"
-RED="\e[31m"
-YELLOW="\e[33m"
-BLUE="\e[34m"
-RESET="\e[0m"
 set -e
 clear
 
-#-------------------- ASCII приветствие --------------------
-echo -e "${YELLOW}"
-cat << "EOF"
-\ \ / /|
- | ___ ___ _ __ ___ ___ \ \ /\ / /| |
- |/ ` _ \ / _ \ V V / | | | ( ) | |
- | | |
- | / // | | |_ _ /| | || _|
-EOF
-echo -e "${RESET}${GREEN}Welcome to Arch Linux Automated Installer for Dell 5580!${RESET}"
+# Цвета
+GREEN="\e[32m"
+RED="\e[31m"
+YELLOW="\e[33m"
+RESET="\e[0m"
 
-#-------------------- Подтверждение --------------------
-read -p "Do you want to continue? (y/N): " confirm
-[[ "$confirm" != "y" ]] && echo -e "${RED}Aborted.${RESET}" && exit 1
+echo -e "${YELLOW}Arch Linux Installer for Dell 5580 (Final Fixed Version)${RESET}"
 
-#-------------------- Проверка интернета --------------------
-ping -q -c 1 archlinux.org > /dev/null || { echo -e "${RED}No internet.${RESET}"; exit 1; }
-
-#-------------------- Настройка времени --------------------
+# Проверка интернета и времени
+ping -q -c 1 archlinux.org > /dev/null || { echo -e "${RED}No internet${RESET}"; exit 1; }
 timedatectl set-ntp true
 
-#-------------------- Выбор диска --------------------
+# Выбор диска
 echo -e "\n${GREEN}Available disks:${RESET}"
-mapfile -t DISKS < <(lsblk -dpno NAME,SIZE | grep -v "boot")
-for i in "${!DISKS[@]}"; do
-    echo "$((i+1))) ${DISKS[$i]}"
-done
-read -p "Choose disk number to install on: " disk_index
-DISK=$(echo ${DISKS[$((disk_index-1))]} | awk '{print $1}')
+lsblk -dpno NAME,SIZE | grep -v "loop"
+read -p "Enter disk (e.g. /dev/sda): " DISK
 
-#-------------------- Хост и пользователь --------------------
-read -p "Enter hostname [archlinux]: " HOSTNAME
-HOSTNAME=${HOSTNAME:-archlinux}
-read -p "Enter username [oleg]: " USERNAME
-USERNAME=${USERNAME:-oleg}
+# Данные
+read -p "Hostname: " HOSTNAME
+read -p "Username: " USERNAME
+read -s -p "Root password: " ROOT_PASSWORD; echo
+read -s -p "User password: " USER_PASSWORD; echo
 
-#-------------------- Пароли --------------------
-while true; do
-    read -s -p "Enter root password: " ROOT_PASSWORD; echo
-    read -s -p "Confirm root password: " ROOT_PASSWORD2; echo
-    [[ "$ROOT_PASSWORD" == "$ROOT_PASSWORD2" ]] && break
-    echo -e "${RED}Mismatch.${RESET}"
-done
-
-while true; do
-    read -s -p "Password for $USERNAME: " USER_PASSWORD; echo
-    read -s -p "Confirm password: " USER_PASSWORD2; echo
-    [[ "$USER_PASSWORD" == "$USER_PASSWORD2" ]] && break
-    echo -e "${RED}Mismatch.${RESET}"
-done
-
-#-------------------- Разметка (GPT/UEFI + Btrfs) --------------------
-# [cite_start]Исправлено: принудительное размонтирование для предотвращения ошибок[span_0](end_span)
+# Очистка и разметка (UEFI)
 umount -R /mnt 2>/dev/null || true
-swapoff -a 2>/dev/null || true
-
 sgdisk --zap-all $DISK
 sgdisk -n 1:0:+550M -t 1:ef00 $DISK
 sgdisk -n 2:0:0 -t 2:8300 $DISK
 PART_EFI="${DISK}1"
 PART_ROOT="${DISK}2"
 
+# Форматирование и Btrfs
 mkfs.fat -F32 $PART_EFI
 mkfs.btrfs -f -L ArchLinux $PART_ROOT
-
-# Создание Subvolumes
 mount $PART_ROOT /mnt
 btrfs subvolume create /mnt/@
 btrfs subvolume create /mnt/@home
@@ -81,7 +43,7 @@ btrfs subvolume create /mnt/@snapshots
 btrfs subvolume create /mnt/@var_log
 umount /mnt
 
-# [span_1](start_span)Монтирование с оптимизацией под SSD[span_1](end_span)
+# Монтирование
 BTRFS_OPTS="noatime,compress=zstd:2,ssd,discard=async,space_cache=v2"
 mount -t btrfs -o subvol=@,$BTRFS_OPTS $PART_ROOT /mnt
 mkdir -p /mnt/{boot,home,.snapshots,var/log}
@@ -90,22 +52,21 @@ mount -t btrfs -o subvol=@snapshots,$BTRFS_OPTS $PART_ROOT /mnt/.snapshots
 mount -t btrfs -o subvol=@var_log,$BTRFS_OPTS $PART_ROOT /mnt/var/log
 mount $PART_EFI /mnt/boot
 
-#-------------------- Обновление зеркал --------------------
-echo -e "\n${GREEN}Updating mirror list (Reflector)...${RESET}"
-[span_2](start_span)pacman -Sy --noconfirm reflector[span_2](end_span)
+# Зеркала (Reflector)
+echo -e "\n${GREEN}Updating mirror list...${RESET}"
+pacman -Sy --noconfirm reflector
 reflector --country Russia,Germany --sort rate -n 10 --save /etc/pacman.d/mirrorlist
 pacman -Sy --noconfirm
 
-#-------------------- Установка системы --------------------
-# [span_3](start_span)Добавлено: intel-ucode для i7-7820HQ и nvidia для 940MX[span_3](end_span)
-echo -e "\n${GREEN}Installing system and drivers...${RESET}"
+# Установка базы и драйверов
+echo -e "\n${GREEN}Installing packages...${RESET}"
 pacstrap -K /mnt base base-devel linux-zen linux-firmware intel-ucode btrfs-progs \
-networkmanager zsh git sudo terminus-font xorg-server xorg-xinit nvidia nvidia-utils \
+networkmanager zsh git sudo xorg-server xorg-xinit nvidia nvidia-utils \
 bspwm polybar sxhkd neovim alacritty feh rofi pcmanfm ranger
 
 genfstab -U /mnt >> /mnt/etc/fstab
 
-#-------------------- Настройки в chroot --------------------
+# Настройка системы через chroot
 arch-chroot /mnt /bin/bash <<EOF
 ln -sf /usr/share/zoneinfo/Europe/Moscow /etc/localtime
 hwclock --systohc
@@ -115,63 +76,32 @@ locale-gen
 echo "LANG=ru_RU.UTF-8" > /etc/locale.conf
 echo "$HOSTNAME" > /etc/hostname
 
+# Пользователи
 echo "root:$ROOT_PASSWORD" | chpasswd
 useradd -m -G wheel,video,audio -s /bin/zsh $USERNAME
 echo "$USERNAME:$USER_PASSWORD" | chpasswd
 sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
 
-# [span_4](start_span)Установка загрузчика (Systemd-boot)[span_4](end_span)
+# Загрузчик (Исправленная секция)
 bootctl --path=/boot install
 UUID=\$(blkid -s UUID -o value $PART_ROOT)
 echo "default arch.conf" > /boot/loader/loader.conf
-cat <<CONF > /boot/loader/entries/arch.conf
+cat <<BOOTCONF > /boot/loader/entries/arch.conf
 title   Arch Linux (Zen)
 linux   /vmlinuz-linux-zen
 initrd  /intel-ucode.img
 initrd  /initramfs-linux-zen.img
 options root=UUID=\$UUID rootflags=subvol=@ rw nvidia-drm.modeset=1
-CONF
+BOOTCONF
 
-# Отключение писка в системе
+# Отключение писка
 echo "blacklist pcspkr" > /etc/modprobe.d/nobeep.conf
-
 systemctl enable NetworkManager
 EOF
 
-#-------------------- ZSH и софт (из твоего скрипта) --------------------
-[span_5](start_span)arch-chroot /mnt su - $USERNAME -c "git clone https://github.com/ohmyzsh/ohmyzsh.git ~/.oh-my-zsh"[span_5](end_span)
-arch-chroot /mnt su - $USERNAME -c "git clone https://github.com/zsh-users/zsh-autosuggestions ~/.oh-my-zsh/custom/plugins/zsh-autosuggestions"
-arch-chroot /mnt su - $USERNAME -c "git clone https://github.com/zsh-users/zsh-syntax-highlighting ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting"
-arch-chroot /mnt su - $USERNAME -c "cp ~/.oh-my-zsh/templates/zshrc.zsh-template ~/.zshrc"
-
-# [span_6](start_span)Настройка sudo без пароля для yay[span_6](end_span)
+# Доп. софт и yay (от имени пользователя)
+arch-chroot /mnt su - $USERNAME -c "git clone https://github.com/ohmyzsh/ohmyzsh.git ~/.oh-my-zsh"
 echo "$USERNAME ALL=(ALL) NOPASSWD: /usr/bin/pacman" > /mnt/etc/sudoers.d/$USERNAME
-chmod 440 /mnt/etc/sudoers.d/$USERNAME
-
-# [span_7](start_span)Установка yay[span_7](end_span)
 arch-chroot /mnt su - $USERNAME -c "git clone https://aur.archlinux.org/yay.git ~/yay && cd ~/yay && makepkg -si --noconfirm"
 
-#-------------------- Xresources Gruvbox --------------------
-cat <<XCONF > /mnt/home/$USERNAME/.Xresources
-*.foreground: #ebdbb2
-*.background: #282828
-*.color0: #282828
-*.color1: #cc241d
-*.color2: #98971a
-*.color3: #d79921
-*.color4: #458588
-*.color5: #b16286
-*.color6: #689d6a
-*.color7: #a89984
-*.color8: #928374
-*.color9: #fb4934
-*.color10: #b8bb26
-*.color11: #fabd2f
-*.color12: #83a598
-*.color13: #d3869b
-*.color14: #8ec07c
-*.color15: #ebdbb2
-XCONF
-arch-chroot /mnt chown $USERNAME:$USERNAME /home/$USERNAME/.Xresources
-
-[span_8](start_span)echo -e "\n${GREEN}Installation complete! Reboot now.${RESET}"[span_8](end_span)
+echo -e "\n${GREEN}Ready! Reboot and enjoy your Dell 5580.${RESET}"
